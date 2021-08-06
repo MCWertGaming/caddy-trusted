@@ -1,0 +1,32 @@
+FROM registry.local/cert as cert
+
+FROM registry.local/ubi8-minimal:latest as builder
+
+RUN microdnf install wget tar gzip \
+    && curl -s https://api.github.com/repos/caddyserver/caddy/releases/latest \
+    | grep browser_download_url \
+    | grep linux \
+    | grep amd64.tar.gz \
+    | cut -d : -f 2,3 \
+    | tr -d \" \
+    | wget -qi - \
+    && mv caddy_*_linux_amd64.tar.gz caddy.tar.gz \
+    && tar -xzvf caddy.tar.gz
+
+FROM registry.local/ubi8-minimal:latest
+
+COPY --from=cert /root_ca.crt /usr/share/pki/ca-trust-source/anchors/root_ca.crt
+COPY --from=builder /caddy /usr/bin/caddy
+
+RUN update-ca-trust
+
+EXPOSE 80
+EXPOSE 443
+EXPOSE 2019
+
+WORKDIR /srv
+
+USER 1000
+
+ENTRYPOINT ["/usr/bin/caddy"]
+CMD ["run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]
